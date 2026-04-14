@@ -6,7 +6,7 @@
         "name": "biohazard"
       }
     },
-    "User": {
+    "MDE_User": {
       "icon": {
         "type": "font-awesome",
         "name": "person"

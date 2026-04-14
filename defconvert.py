@@ -11,13 +11,14 @@ Node kinds emitted
   MDE_CVE   — Unique vulnerability; ID = CVE ID string (e.g. CVE-2021-34527)
   AZUser    — Entra user with a known aadUserId; ID = Entra user GUID
               Merges with existing AZUser nodes in BloodHound.
-  User      — AD or local user without an aadUserId; ID = accountSid when
-              available, otherwise DOMAIN\\accountName.
+  User      — AD user with a known accountSid but no aadUserId; ID = accountSid.
               Merges with existing AD User nodes in BloodHound by SID.
+  MDE_User  — Local/unknown user with no aadUserId and no accountSid;
+              ID = DOMAIN\\accountName (synthetic, no existing BH match guaranteed).
 
 Edges emitted
   MDE_CVE   -[FoundOn]->          AZDevice
-  AZDevice  -[MDE_LoggedOnTo]->   AZUser | User
+  AZDevice  -[MDE_LoggedOnTo]->   AZUser | User | MDE_User
 """
 
 import argparse
@@ -107,7 +108,7 @@ def _resolve_user_id_and_kind(user: dict) -> tuple[str, str]:
 
     domain = user.get("accountDomain") or "UNKNOWN"
     name   = user.get("accountName")   or "UNKNOWN"
-    return f"{domain}\\{name}", "User"
+    return f"{domain}\\{name}", "MDE_User"
 
 
 def make_user_node(user: dict) -> Node:
@@ -213,7 +214,7 @@ def main() -> None:
     total_nodes = graph.get_node_count()
     total_edges = graph.get_edge_count()
     print(f"nodes: {total_nodes}  edges: {total_edges}", file=sys.stderr)
-    for kind in ("AZDevice", "MDE_CVE", "AZUser", "User"):
+    for kind in ("AZDevice", "MDE_CVE", "AZUser", "User", "MDE_User"):
         n = len(graph.get_nodes_by_kind(kind))
         if n:
             print(f"  {kind}: {n}", file=sys.stderr)

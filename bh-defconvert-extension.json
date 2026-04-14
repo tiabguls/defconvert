@@ -13,6 +13,14 @@
       "is_display_kind": true,
       "icon": "biohazard",
       "color": "#EF4444"
+    },
+    {
+      "name": "MDE_User",
+      "display_name": "User",
+      "description": "A local or unknown user account with no Entra ID and no SID, observed logging on to a Defender-monitored device. ID is DOMAIN\\accountName (synthetic; no existing BloodHound node match guaranteed).",
+      "is_display_kind": true,
+      "icon": "person",
+      "color": "#6366F1"
     }
   ],
   "relationship_kinds": [
