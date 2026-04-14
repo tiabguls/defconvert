@@ -1,0 +1,16 @@
+{
+  "custom_types": {
+    "CVE": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "biohazard"
+      }
+    },
+    "User": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "person"
+      }
+    }
+  }
+}
