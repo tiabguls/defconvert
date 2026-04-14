@@ -1,6 +1,6 @@
 {
   "custom_types": {
-    "CVE": {
+    "MDE_CVE": {
       "icon": {
         "type": "font-awesome",
         "name": "biohazard"

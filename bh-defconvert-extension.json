@@ -7,30 +7,22 @@
   },
   "node_kinds": [
     {
-      "name": "CVE",
+      "name": "MDE_CVE",
       "display_name": "CVE",
       "description": "A Common Vulnerabilities and Exposures entry representing a unique security vulnerability found on one or more Entra-joined devices",
       "is_display_kind": true,
       "icon": "biohazard",
       "color": "#EF4444"
-    },
-    {
-      "name": "User",
-      "display_name": "User",
-      "description": "An AD or local user account observed logging on to a Defender-monitored device. Identified by SID when available, otherwise by DOMAIN\\accountName.",
-      "is_display_kind": true,
-      "icon": "person",
-      "color": "#6366F1"
     }
   ],
   "relationship_kinds": [
     {
-      "name": "FoundOn",
-      "description": "A CVE is present on an AZDevice. Source: CVE node. Target: AZDevice node.",
+      "name": "MDE_FoundOn",
+      "description": "A CVE is present on an AZDevice. Source: MDE_CVE node. Target: AZDevice node.",
       "is_traversable": true
     },
     {
-      "name": "LoggedOnTo",
+      "name": "MDE_LoggedOnTo",
       "description": "A user credential is exposed on a device. Source: AZDevice node. Target: AZUser or User node. Attack path reads: compromise device → steal user credential.",
       "is_traversable": true
     }

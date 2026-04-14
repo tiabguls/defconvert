@@ -8,7 +8,7 @@ Output: BloodHound OpenGraph JSON
 Node kinds emitted
   AZDevice  — Entra/Defender device; ID = Entra device GUID
               Merges with existing AZDevice nodes in BloodHound.
-  CVE       — Unique vulnerability; ID = CVE ID string (e.g. CVE-2021-34527)
+  MDE_CVE   — Unique vulnerability; ID = CVE ID string (e.g. CVE-2021-34527)
   AZUser    — Entra user with a known aadUserId; ID = Entra user GUID
               Merges with existing AZUser nodes in BloodHound.
   User      — AD or local user without an aadUserId; ID = accountSid when
@@ -16,8 +16,8 @@ Node kinds emitted
               Merges with existing AD User nodes in BloodHound by SID.
 
 Edges emitted
-  CVE       -[FoundOn]->          AZDevice
-  AZDevice  -[LoggedOnTo]->       AZUser | User
+  MDE_CVE   -[FoundOn]->          AZDevice
+  AZDevice  -[MDE_LoggedOnTo]->   AZUser | User
 """
 
 import argparse
@@ -85,7 +85,7 @@ def make_cve_node(vuln: dict) -> Node:
     _set_if(props, "publishedOn",     vuln.get("publishedOn"))
     _set_if(props, "updatedOn",       vuln.get("updatedOn"))
     _set_str_list(props, "exploitTypes", vuln.get("exploitTypes"))
-    return Node(id=cve_id, kinds=["CVE"], properties=props)
+    return Node(id=cve_id, kinds=["MDE_CVE"], properties=props)
 
 
 def _resolve_user_id_and_kind(user: dict) -> tuple[str, str]:
@@ -132,7 +132,7 @@ def make_loggedon_edge(entra_id: str, user: dict) -> Edge:
     return Edge(
         start_node=entra_id,
         end_node=user_id,
-        kind="LoggedOnTo",
+        kind="MDE_LoggedOnTo",
         properties=props if len(props) > 0 else None,
     )
 
@@ -161,7 +161,7 @@ def convert(data: dict) -> OpenGraph:
             graph.add_edge(Edge(
                 start_node=cve_id,
                 end_node=entra_id,
-                kind="FoundOn",
+                kind="MDE_FoundOn",
             ))
 
         # User nodes + LoggedOnTo edges
@@ -213,7 +213,7 @@ def main() -> None:
     total_nodes = graph.get_node_count()
     total_edges = graph.get_edge_count()
     print(f"nodes: {total_nodes}  edges: {total_edges}", file=sys.stderr)
-    for kind in ("AZDevice", "CVE", "AZUser", "User"):
+    for kind in ("AZDevice", "MDE_CVE", "AZUser", "User"):
         n = len(graph.get_nodes_by_kind(kind))
         if n:
             print(f"  {kind}: {n}", file=sys.stderr)
