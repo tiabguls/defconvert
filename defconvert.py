@@ -52,7 +52,7 @@ def _set_str_list(props: Properties, key: str, value) -> None:
 
 def make_device_node(entra_id: str, machine: dict) -> Node:
     props = Properties()
-    props["entraDeviceId"] = entra_id
+    props["entraDeviceId"] = entra_id.upper()
     _set_if(props, "defenderId",      machine.get("id"))
     _set_if(props, "computerDnsName", machine.get("computerDnsName"))
     _set_if(props, "osPlatform",      machine.get("osPlatform"))
@@ -65,7 +65,7 @@ def make_device_node(entra_id: str, machine: dict) -> Node:
     _set_if(props, "onboardingStatus",machine.get("onboardingStatus"))
     _set_if(props, "isAadJoined",     machine.get("isAadJoined"))
     _set_str_list(props, "machineTags", machine.get("machineTags"))
-    return Node(id=entra_id, kinds=["AZDevice"], properties=props)
+    return Node(id=entra_id.upper(), kinds=["AZDevice"], properties=props)
 
 
 def make_cve_node(vuln: dict) -> Node:
