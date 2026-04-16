@@ -6,8 +6,6 @@ Input:  JSON file produced by defclone.py (dict keyed by Entra device GUID)
 Output: BloodHound OpenGraph JSON
 
 Node kinds emitted
-  AZDevice  — Entra/Defender device; ID = Entra device GUID
-              Merges with existing AZDevice nodes in BloodHound.
   MDE_CVE   — Unique vulnerability; ID = CVE ID string (e.g. CVE-2021-34527)
   AZUser    — Entra user with a known aadUserId; ID = Entra user GUID
               Merges with existing AZUser nodes in BloodHound.
@@ -16,9 +14,13 @@ Node kinds emitted
   MDE_User  — Local/unknown user with no aadUserId and no accountSid;
               ID = DOMAIN\\accountName (synthetic, no existing BH match guaranteed).
 
+AZDevice nodes are NOT emitted. Both edges use property matching on the
+existing AZDevice node's "deviceId" property to locate the correct device.
+
 Edges emitted
-  MDE_CVE   -[FoundOn]->          AZDevice
-  AZDevice  -[MDE_LoggedOnTo]->   AZUser | User | MDE_User
+  MDE_CVE   -[MDE_FoundOn]->    AZDevice  (end matched by deviceId property)
+  AZDevice  -[MDE_LoggedOnTo]-> AZUser | User | MDE_User
+              (start matched by deviceId property)
 """
 
 import argparse
@@ -26,7 +28,7 @@ import json
 import sys
 from pathlib import Path
 
-from bhopengraph import Edge, Node, OpenGraph, Properties
+from bhopengraph import Node, OpenGraph, Properties
 
 
 # ---------------------------------------------------------------------------
@@ -48,24 +50,6 @@ def _set_str_list(props: Properties, key: str, value) -> None:
     coerced = [str(item) for item in value]
     if coerced:
         props[key] = coerced
-
-
-def make_device_node(entra_id: str, machine: dict) -> Node:
-    props = Properties()
-    props["entraDeviceId"] = entra_id.upper()
-    _set_if(props, "defenderId",      machine.get("id"))
-    _set_if(props, "computerDnsName", machine.get("computerDnsName"))
-    _set_if(props, "osPlatform",      machine.get("osPlatform"))
-    _set_if(props, "osVersion",       machine.get("osVersion"))
-    _set_if(props, "healthStatus",    machine.get("healthStatus"))
-    _set_if(props, "riskScore",       machine.get("riskScore"))
-    _set_if(props, "exposureLevel",   machine.get("exposureLevel"))
-    _set_if(props, "firstSeen",       machine.get("firstSeen"))
-    _set_if(props, "lastSeen",        machine.get("lastSeen"))
-    _set_if(props, "onboardingStatus",machine.get("onboardingStatus"))
-    _set_if(props, "isAadJoined",     machine.get("isAadJoined"))
-    _set_str_list(props, "machineTags", machine.get("machineTags"))
-    return Node(id=entra_id.upper(), kinds=["AZDevice"], properties=props)
 
 
 def make_cve_node(vuln: dict) -> Node:
@@ -96,7 +80,7 @@ def _resolve_user_id_and_kind(user: dict) -> tuple[str, str]:
     Priority:
       1. aadUserId  → AZUser (links to existing Entra user in BloodHound)
       2. accountSid → User   (links to existing AD user in BloodHound by SID)
-      3. DOMAIN\\name       → User   (synthetic node; no existing BH match guaranteed)
+      3. DOMAIN\\name       → MDE_User (synthetic node; no existing BH match guaranteed)
     """
     aad_id = user.get("aadUserId")
     if aad_id:
@@ -124,54 +108,83 @@ def make_user_node(user: dict) -> Node:
     return Node(id=node_id, kinds=[kind], properties=props)
 
 
-def make_loggedon_edge(entra_id: str, user: dict) -> Edge:
+# ---------------------------------------------------------------------------
+# Edge dict builders (AZDevice endpoints matched by property)
+# ---------------------------------------------------------------------------
+
+def _azdevice_endpoint(entra_id: str) -> dict:
+    """Property-matched edge endpoint that resolves to an existing AZDevice node."""
+    return {
+        "match_by": "property",
+        "kind": "AZDevice",
+        "property_matchers": [
+            {"key": "deviceId", "operator": "equals", "value": entra_id}
+        ],
+    }
+
+
+def _make_foundon_edge_dict(cve_id: str, entra_id: str) -> dict:
+    return {
+        "kind": "MDE_FoundOn",
+        "start": {"value": cve_id, "match_by": "id"},
+        "end": _azdevice_endpoint(entra_id),
+    }
+
+
+def _make_loggedon_edge_dict(entra_id: str, user: dict) -> dict:
     user_id, _ = _resolve_user_id_and_kind(user)
     props = Properties()
     _set_if(props, "firstSeen", user.get("firstSeen"))
     _set_if(props, "lastSeen",  user.get("lastSeen"))
     _set_str_list(props, "logonTypes", user.get("logonTypes"))
-    return Edge(
-        start_node=entra_id,
-        end_node=user_id,
-        kind="MDE_LoggedOnTo",
-        properties=props if len(props) > 0 else None,
-    )
+    edge: dict = {
+        "kind": "MDE_LoggedOnTo",
+        "start": _azdevice_endpoint(entra_id),
+        "end": {"value": user_id, "match_by": "id"},
+    }
+    if len(props) > 0:
+        edge["properties"] = props.to_dict()
+    return edge
 
 
 # ---------------------------------------------------------------------------
 # Conversion
 # ---------------------------------------------------------------------------
 
-def convert(data: dict) -> OpenGraph:
+def convert(data: dict) -> tuple[OpenGraph, list[dict]]:
+    """
+    Returns a graph of non-AZDevice nodes and a list of raw edge dicts.
+    AZDevice nodes are not emitted; edges reference them via property matching.
+    """
     graph = OpenGraph()
+    raw_edges: list[dict] = []
+    seen_edges: set[tuple] = set()
 
     for entra_id, entry in data.items():
-        machine = entry.get("machine") or {}
-        vulns   = entry.get("vulnerabilities") or []
-        users   = entry.get("logonUsers") or []
-
-        # Device node — always add first so edges can reference it
-        graph.add_node(make_device_node(entra_id, machine))
+        vulns = entry.get("vulnerabilities") or []
+        users = entry.get("logonUsers") or []
 
         # CVE nodes + FoundOn edges
         for vuln in vulns:
             cve_id = vuln.get("id")
             if not cve_id:
                 continue
-            graph.add_node(make_cve_node(vuln))       # no-op if already present
-            graph.add_edge(Edge(
-                start_node=cve_id,
-                end_node=entra_id,
-                kind="MDE_FoundOn",
-            ))
+            graph.add_node(make_cve_node(vuln))
+            key = ("MDE_FoundOn", cve_id, entra_id)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                raw_edges.append(_make_foundon_edge_dict(cve_id, entra_id))
 
         # User nodes + LoggedOnTo edges
         for user in users:
-            user_node = make_user_node(user)
-            graph.add_node(user_node)                  # no-op if already present
-            graph.add_edge(make_loggedon_edge(entra_id, user))
+            graph.add_node(make_user_node(user))
+            user_id, _ = _resolve_user_id_and_kind(user)
+            key = ("MDE_LoggedOnTo", entra_id, user_id)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                raw_edges.append(_make_loggedon_edge_dict(entra_id, user))
 
-    return graph
+    return graph, raw_edges
 
 
 # ---------------------------------------------------------------------------
@@ -208,19 +221,25 @@ def main() -> None:
         print("error: expected a JSON object at the top level", file=sys.stderr)
         sys.exit(1)
 
-    graph = convert(data)
+    graph, raw_edges = convert(data)
 
     # Summary to stderr so it doesn't pollute stdout-piped output
     total_nodes = graph.get_node_count()
-    total_edges = graph.get_edge_count()
+    total_edges = len(raw_edges)
+    total_devices = len(data)
     print(f"nodes: {total_nodes}  edges: {total_edges}", file=sys.stderr)
-    for kind in ("AZDevice", "MDE_CVE", "AZUser", "User", "MDE_User"):
+    print(f"  AZDevice: {total_devices} (property-matched, not emitted)", file=sys.stderr)
+    for kind in ("MDE_CVE", "AZUser", "User", "MDE_User"):
         n = len(graph.get_nodes_by_kind(kind))
         if n:
             print(f"  {kind}: {n}", file=sys.stderr)
 
+    # Build final JSON: nodes from graph + raw property-matched edge dicts
+    graph_dict = json.loads(graph.export_json(include_metadata=False))
+    graph_dict["graph"]["edges"] = raw_edges
+
     indent = args.indent if args.indent > 0 else None
-    json_out = graph.export_json(include_metadata=False, indent=indent)
+    json_out = json.dumps(graph_dict, indent=indent)
 
     if args.output:
         out_path = Path(args.output)
