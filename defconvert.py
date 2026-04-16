@@ -118,7 +118,7 @@ def _azdevice_endpoint(entra_id: str) -> dict:
         "match_by": "property",
         "kind": "AZDevice",
         "property_matchers": [
-            {"key": "deviceId", "operator": "equals", "value": entra_id}
+            {"key": "deviceid", "operator": "equals", "value": entra_id}
         ],
     }
 

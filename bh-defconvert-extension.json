@@ -26,12 +26,12 @@
   "relationship_kinds": [
     {
       "name": "MDE_FoundOn",
-      "description": "A CVE is present on an AZDevice. Source: MDE_CVE node (matched by id). Target: AZDevice node (matched by deviceId property).",
+      "description": "A CVE is present on an AZDevice. Source: MDE_CVE node (matched by id). Target: AZDevice node (matched by deviceid property).",
       "is_traversable": true
     },
     {
       "name": "MDE_LoggedOnTo",
-      "description": "A user credential is exposed on a device. Source: AZDevice node (matched by deviceId property). Target: AZUser or User node (matched by id). Attack path reads: compromise device → steal user credential.",
+      "description": "A user credential is exposed on a device. Source: AZDevice node (matched by deviceid property). Target: AZUser or User node (matched by id). Attack path reads: compromise device → steal user credential.",
       "is_traversable": true
     }
   ],
